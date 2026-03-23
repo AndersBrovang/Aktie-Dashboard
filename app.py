@@ -3,6 +3,7 @@ import yfinance as yf
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
+import numpy as np
 
 st.set_page_config(page_title="Aktie EDA", layout="wide")
 st.title("Aktie-EDA Dashboard", anchor=False)
@@ -10,6 +11,7 @@ st.title("Aktie-EDA Dashboard", anchor=False)
 st.sidebar.header("Indstillinger")
 aktie_symbol = st.sidebar.text_input("Aktie:", "NOVO-B.CO")
 periode = st.sidebar.selectbox("Tidsperiode:", ["1mo", "3mo", "6mo", "1y", "2y", "5y", "max"], index=3)
+risikofri_rente_pct = st.sidebar.number_input("Risikofri rente i % (Årlig):", value=2.0, step=0.1)
 
 @st.cache_data
 def hent_og_bearbejd_data(symbol, period):
@@ -33,10 +35,27 @@ if not data.empty:
     gaarsdagens_pris = data['Close'].iloc[-2]
     pct_aendring = ((nyeste_pris - gaarsdagens_pris) / gaarsdagens_pris) * 100
     
-    col1, col2, col3 = st.columns(3)
+    dagligt_afkast_decimal = data['Dagligt_Afkast_%'].dropna() / 100
+    gns_dagligt_afkast = dagligt_afkast_decimal.mean()
+    std_dagligt_afkast = dagligt_afkast_decimal.std()
+ 
+    daglig_rf = (risikofri_rente_pct / 100) / 252
+    
+    if std_dagligt_afkast > 0:
+        sharpe_ratio = ((gns_dagligt_afkast - daglig_rf) / std_dagligt_afkast) * np.sqrt(252)
+    else:
+        sharpe_ratio = 0.0
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Nuværende Pris", f"{nyeste_pris:.2f}", f"{pct_aendring:.2f}%")
     col2.metric("Højeste i perioden", f"{data['High'].max():.2f}")
     col3.metric("Gns. Handelsvolumen", f"{int(data['Volume'].mean()):,}")
+    
+    col4.metric(
+        "Sharpe Ratio (Årlig)", 
+        f"{sharpe_ratio:.2f}", 
+        "Godt" if sharpe_ratio > 1 else "Acceptabelt" if sharpe_ratio > 0 else "Dårligt",
+        delta_color="normal" if sharpe_ratio > 0 else "inverse"
+    )
     
     st.divider()
 
